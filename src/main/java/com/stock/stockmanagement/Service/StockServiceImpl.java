@@ -1,6 +1,8 @@
 package com.stock.stockmanagement.Service;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
@@ -9,8 +11,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import com.stock.stockmanagement.Model.Issued;
+import com.stock.stockmanagement.Model.Receipt;
 import com.stock.stockmanagement.Model.StockEntry;
+import com.stock.stockmanagement.Repo.IssuedRepository;
+import com.stock.stockmanagement.Repo.ReceiptRepository;
 import com.stock.stockmanagement.Repo.StockEntryRepository;
+
+import jakarta.annotation.PostConstruct;
 
 @Service
 public class StockServiceImpl implements StockService {
@@ -19,44 +27,103 @@ public class StockServiceImpl implements StockService {
     private StockEntryRepository stockEntryRepository;
 
     private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM");
+    @Autowired
+    private IssuedRepository issuedRepository;
+
+    @Autowired
+    private ReceiptRepository receiptRepository;
 
     @Override
     public void saveStockEntry(StockEntry stockEntry) {
-        String currentMonthYear = LocalDate.now().format(formatter);
-        stockEntry.setMonthYear(currentMonthYear);
+        LocalDate entryDate = stockEntry.getEntryDate() != null ? stockEntry.getEntryDate() : LocalDate.now();
+        String entryMonthYear = entryDate.format(formatter);
+        stockEntry.setMonthYear(entryMonthYear);
+        stockEntry.setEntryDate(entryDate);
 
-        Optional<StockEntry> existingCurrentEntryOpt = stockEntryRepository.findTopByBagCodeAndMonthYearOrderByEntryDateDesc(
-                stockEntry.getBagCode(), currentMonthYear);
+        YearMonth entryYM = YearMonth.from(entryDate);
+        YearMonth currentYM = YearMonth.now();
 
-        StockEntry entryToUpdate;
+        StockEntry latestEntry = null;
 
-        if (existingCurrentEntryOpt.isPresent()) {
-            entryToUpdate = existingCurrentEntryOpt.get();
-        } else {
-            StockEntry previousEntry = stockEntryRepository.findByBagCode(stockEntry.getBagCode());
-            entryToUpdate = new StockEntry();
-            entryToUpdate.setBagCode(stockEntry.getBagCode());
-            entryToUpdate.setMonthYear(currentMonthYear);
-            entryToUpdate.setOpening(previousEntry != null ? previousEntry.getClosing() : 0);
-            entryToUpdate.setReceipt(0);
-            entryToUpdate.setIssued(0);
-            entryToUpdate.setClosing(entryToUpdate.getOpening());
-        }
+        YearMonth loopYM = entryYM;
 
-        if ("receipt".equalsIgnoreCase(stockEntry.getType())) {
-            entryToUpdate.setReceipt(entryToUpdate.getReceipt() + stockEntry.getItemCount());
-        } else if ("issued".equalsIgnoreCase(stockEntry.getType())) {
-            int availableStock = entryToUpdate.getOpening() + entryToUpdate.getReceipt() - entryToUpdate.getIssued();
-            if (stockEntry.getItemCount() > availableStock) {
-                throw new IllegalArgumentException("Cannot issue more than available stock.");
+        while (!loopYM.isAfter(currentYM)) {
+            String loopMonthYear = loopYM.format(formatter);
+
+            Optional<StockEntry> loopEntryOpt =
+                stockEntryRepository.findTopByBagCodeAndMonthYearOrderByEntryDateDesc(stockEntry.getBagCode(), loopMonthYear);
+
+            StockEntry loopEntry;
+
+            if (loopEntryOpt.isPresent()) {
+                loopEntry = loopEntryOpt.get();
+
+                // Always set opening based on previous month's closing
+                if (latestEntry != null) {
+                    loopEntry.setOpening(latestEntry.getClosing());
+                } else {
+                    String prevMonth = loopYM.minusMonths(1).format(formatter);
+                    StockEntry prevEntry = stockEntryRepository
+                        .findTopByBagCodeAndMonthYearOrderByEntryDateDesc(stockEntry.getBagCode(), prevMonth)
+                        .orElse(null);
+                    loopEntry.setOpening(prevEntry != null ? prevEntry.getClosing() : 0);
+                }
+
+            } else {
+                loopEntry = new StockEntry();
+                loopEntry.setBagCode(stockEntry.getBagCode());
+                loopEntry.setMonthYear(loopMonthYear);
+                loopEntry.setEntryDate(LocalDate.of(loopYM.getYear(), loopYM.getMonth(), 1));
+                loopEntry.setReceipt(0);
+                loopEntry.setIssued(0);
+
+                // Set opening as usual
+                if (latestEntry != null) {
+                    loopEntry.setOpening(latestEntry.getClosing());
+                } else {
+                    String prevMonth = loopYM.minusMonths(1).format(formatter);
+                    StockEntry prevEntry = stockEntryRepository
+                        .findTopByBagCodeAndMonthYearOrderByEntryDateDesc(stockEntry.getBagCode(), prevMonth)
+                        .orElse(null);
+                    loopEntry.setOpening(prevEntry != null ? prevEntry.getClosing() : 0);
+                }
             }
-            entryToUpdate.setIssued(entryToUpdate.getIssued() + stockEntry.getItemCount());
-        } else {
-            throw new IllegalArgumentException("Invalid stock entry type.");
-        }
 
-        entryToUpdate.setClosing(entryToUpdate.getOpening() + entryToUpdate.getReceipt() - entryToUpdate.getIssued());
-        stockEntryRepository.save(entryToUpdate);
+            // If this is the month we're submitting data for
+            if (loopYM.equals(entryYM)) {
+                if ("receipt".equalsIgnoreCase(stockEntry.getType())) {
+                    loopEntry.setReceipt(loopEntry.getReceipt() + stockEntry.getItemCount());
+                    // Inside "receipt" condition
+                    Receipt receipt = new Receipt();
+                    receipt.setBagCode(stockEntry.getBagCode());
+                    receipt.setEntryDate(entryDate);
+                    receipt.setItemCount(stockEntry.getItemCount());
+                    receipt.setCreatedAt(LocalDateTime.now());
+                    receiptRepository.save(receipt);
+
+                } else if ("issued".equalsIgnoreCase(stockEntry.getType())) {
+                    int available = loopEntry.getOpening() + loopEntry.getReceipt() - loopEntry.getIssued();
+                    if (stockEntry.getItemCount() > available) {
+                        throw new IllegalArgumentException("Cannot issue more than available stock.");
+                    }
+                    Issued issued = new Issued();
+                    issued.setBagCode(stockEntry.getBagCode());
+                    issued.setEntryDate(entryDate);
+                    issued.setItemCount(stockEntry.getItemCount());
+                    issued.setCreatedAt(LocalDateTime.now());
+                    issuedRepository.save(issued);
+                    loopEntry.setIssued(loopEntry.getIssued() + stockEntry.getItemCount());
+                } else {
+                    throw new IllegalArgumentException("Invalid stock entry type.");
+                }
+            }
+
+            loopEntry.setClosing(loopEntry.getOpening() + loopEntry.getReceipt() - loopEntry.getIssued());
+            stockEntryRepository.save(loopEntry);
+
+            latestEntry = loopEntry;
+            loopYM = loopYM.plusMonths(1); // move to next month
+        }
     }
 
     @Override
@@ -69,14 +136,36 @@ public class StockServiceImpl implements StockService {
         return stockEntryRepository.findAllDistinctBagCodes();
     }
 
-    @Scheduled(cron = "0 0 1 1 * ?") // Every 1st of the month at 1:00 AM
+    @PostConstruct
+    public void ensureCurrentMonthRowsExistOnStartup() {
+        ensureCurrentMonthEntriesExist();
+    }
+
+    @Scheduled(cron = "0 0 1 1 * ?")
     public void updateOpeningForNewMonth() {
-        List<StockEntry> allEntries = stockEntryRepository.findAll();
-        for (StockEntry entry : allEntries) {
-            entry.setOpening(entry.getClosing());
-            entry.setReceipt(0);
-            entry.setIssued(0);
-            stockEntryRepository.save(entry);
+        ensureCurrentMonthEntriesExist();
+    }
+
+    public void ensureCurrentMonthEntriesExist() {
+        String currentMonthYear = LocalDate.now().format(formatter);
+        String previousMonthYear = LocalDate.now().minusMonths(1).format(formatter);
+        List<String> allBagCodes = stockEntryRepository.findAllDistinctBagCodes();
+
+        for (String bagCode : allBagCodes) {
+            Optional<StockEntry> currentEntry = stockEntryRepository.findTopByBagCodeAndMonthYearOrderByEntryDateDesc(bagCode, currentMonthYear);
+
+            if (currentEntry.isEmpty()) {
+                StockEntry previousEntry = stockEntryRepository.findTopByBagCodeAndMonthYearOrderByEntryDateDesc(bagCode, previousMonthYear).orElse(null);
+                StockEntry newEntry = new StockEntry();
+                newEntry.setBagCode(bagCode);
+                newEntry.setMonthYear(currentMonthYear);
+                newEntry.setOpening(previousEntry != null ? previousEntry.getClosing() : 0);
+                newEntry.setReceipt(0);
+                newEntry.setIssued(0);
+                newEntry.setClosing(newEntry.getOpening());
+                newEntry.setEntryDate(LocalDate.now());
+                stockEntryRepository.save(newEntry);
+            }
         }
     }
-} 
+}

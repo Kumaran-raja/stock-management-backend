@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
 import com.stock.stockmanagement.Model.StockEntry;
 import com.stock.stockmanagement.Repo.StockEntryRepository;
 import com.stock.stockmanagement.Service.StockService;
@@ -18,6 +19,7 @@ import com.stock.stockmanagement.Service.StockServiceImpl;
 @RequestMapping("/api/stock")
 public class StockEntryController {
 
+    //  @Autowired used to create object for each class
     @Autowired
     private StockEntryRepository stockEntryRepository;
    
@@ -25,7 +27,7 @@ public class StockEntryController {
     private StockService stockService;
     @Autowired
     private StockServiceImpl stockServiceImp;
-    
+    // it will handle the /api/stock/submit path api call
     @PostMapping("/submit")
     public void submitEntry(@RequestBody StockEntry stockEntry) {
         stockService.saveStockEntry(stockEntry);
@@ -40,4 +42,5 @@ public class StockEntryController {
         stockServiceImp.saveStockEntry(stockEntry);
         return ResponseEntity.ok("Entry added or updated.");
     }
+    
 }
