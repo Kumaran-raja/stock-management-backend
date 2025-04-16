@@ -8,4 +8,5 @@ public interface StockService {
     void saveStockEntry(StockEntry stockEntry);
     List<StockEntry> getAllStockEntries();
     List<String> getAllBagCodes();
+    Object getEntriesByType(String type);
 }

@@ -168,4 +168,13 @@ public class StockServiceImpl implements StockService {
             }
         }
     }
+    public Object getEntriesByType(String type) {
+        if ("receipt".equalsIgnoreCase(type)) {
+            return receiptRepository.findAll();
+        } else if ("issued".equalsIgnoreCase(type)) {
+            return issuedRepository.findAll();
+        } else {
+            throw new IllegalArgumentException("Invalid type. Must be 'receipt' or 'issued'.");
+        }
+    }
 }
