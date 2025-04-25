@@ -10,11 +10,11 @@
   "projects": [
     {
       "idx": 1,
-      "id": "16479000000010077",
-      "name": "stock-management",
+      "id": "16479000000014028",
+      "name": "StockManagementBackend",
       "domain": {
-        "id": "50025934013",
-        "name": "stock-management-60039785455.development"
+        "id": "50026128252",
+        "name": "stockmanagementbackend-60039785455.development"
       },
       "timezone": "Asia/Kolkata",
       "env": [

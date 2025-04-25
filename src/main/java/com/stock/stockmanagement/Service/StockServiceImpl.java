@@ -177,4 +177,49 @@ public class StockServiceImpl implements StockService {
             throw new IllegalArgumentException("Invalid type. Must be 'receipt' or 'issued'.");
         }
     }
+    public List<StockEntry> getStockEntriesBetweenDates(LocalDate fromDate, LocalDate toDate) {
+        List<String> bagCodes = stockEntryRepository.findAllDistinctBagCodes();
+        List<StockEntry> results = new java.util.ArrayList<>();
+    
+        DateTimeFormatter monthYearFormatter = DateTimeFormatter.ofPattern("yyyy-MM");
+    
+        for (String bagCode : bagCodes) {
+            // Find the latest entry before fromDate for opening balance
+            String prevMonthYear = fromDate.minusMonths(1).format(monthYearFormatter);
+            Optional<StockEntry> previousEntry = stockEntryRepository.findTopByBagCodeAndMonthYearOrderByEntryDateDesc(bagCode, prevMonthYear);
+    
+            int opening = previousEntry.map(StockEntry::getClosing).orElse(0);
+    
+            // Get total receipt and issued between fromDate and toDate
+            int totalReceipt = receiptRepository
+                .findByBagCodeAndEntryDateBetween(bagCode, fromDate, toDate)
+                .stream()
+                .mapToInt(r -> r.getItemCount())
+                .sum();
+    
+            int totalIssued = issuedRepository
+                .findByBagCodeAndEntryDateBetween(bagCode, fromDate, toDate)
+                .stream()
+                .mapToInt(i -> i.getItemCount())
+                .sum();
+    
+            int closing = opening + totalReceipt - totalIssued;
+    
+            // Construct StockEntry-like object for reporting
+            StockEntry entry = new StockEntry();
+            entry.setBagCode(bagCode);
+            entry.setOpening(opening);
+            entry.setReceipt(totalReceipt);
+            entry.setIssued(totalIssued);
+            entry.setClosing(closing);
+            entry.setEntryDate(fromDate); // you can set to fromDate or null depending on your use case
+            entry.setMonthYear(fromDate.format(formatter)); // for tracking
+    
+            results.add(entry);
+        }
+    
+        return results;
+    }
+    
+    
 }

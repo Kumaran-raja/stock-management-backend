@@ -60,7 +60,6 @@ public class Issued {
     }
 
     public List<StockEntry> findAll() {
-        // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'findAll'");
     }
     

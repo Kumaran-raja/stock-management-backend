@@ -61,7 +61,6 @@ public class Receipt {
     // Getters, Setters
 
     public List<StockEntry> findAll() {
-        // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'findAll'");
     }
 }
