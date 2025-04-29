@@ -7,16 +7,17 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
 import com.stock.stockmanagement.Model.StockEntry;
 import com.stock.stockmanagement.Service.StockService;
 import com.stock.stockmanagement.Service.StockServiceImpl;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import java.time.LocalDate;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.web.bind.annotation.RequestMethod;
 @RestController
 @RequestMapping("/api/stock")
-@CrossOrigin(origins = "http://localhost:3000")
+//@CrossOrigin(origins = "http://localhost:3000")
+@CrossOrigin(origins = "http://localhost:3000", allowedHeaders = "*", methods = {RequestMethod.GET, RequestMethod.POST})
 public class StockEntryController {
 
     @Autowired
@@ -58,5 +59,4 @@ public class StockEntryController {
             return ResponseEntity.internalServerError().body("Server error: " + e.getMessage());
         }
     }
-
 }
